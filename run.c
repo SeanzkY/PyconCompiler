@@ -205,6 +205,8 @@ void main(int argc, char* argv[]) {
 	}
 
 	if (errorSyntaxSize == 1 && isNoErrors()) {
+		//changePrecedence(&x);
+		printParseTree(x, 0, 0);
 		changePrecedence(&x);
 		printParseTree(x, 0, 0);
 		handleAsm(x);

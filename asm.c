@@ -16,7 +16,8 @@ int labelCounter = 0;
 Stack* numberPushed = NULL;
 Stack* pointerValues = NULL;
 
-void identifyAsm(parseTree* t);
+void identifyAsm(parseTree** result);
+
 void saveToDataSeg(char* command);
 
 void saveToCodeSeg(char* command);
@@ -42,8 +43,17 @@ char* handleVars(TokenId* var) {
 // just for comparasion 
 void compareSignAssembly(parseTree* t,char* command) {
     char* label, *label1;
-    saveToCodeSeg("\n    sub     ax, ");
-    saveToCodeSeg(handleVars(t->brother->son->val));
+    if (t->brother->son->brother == NULL) {
+          saveToCodeSeg("\n    sub     ax, ");
+          saveToCodeSeg(handleVars(t->brother->son->val));
+    }
+    else {
+        saveToCodeSeg("\n    push ax ");
+        computeExpression(&(t->brother));
+        saveToCodeSeg("\n    pop bx ");
+        saveToCodeSeg("\n    sub   ax,bx\n ");
+        saveToCodeSeg("\n   neg ax\n ");
+    }
     saveToCodeSeg("\n    cmp     ax,0\n ");
     saveToCodeSeg(command);
     label = nextLabel();
@@ -64,44 +74,93 @@ void computeExpression(parseTree** start) {
     parseTree* t = *start;
     char* label;
     char* label1;
-    saveToCodeSeg("\n    mov     ax, ");
-    saveToCodeSeg(handleVars(t->son->val));
+    
+    if (t->son->val->tok != -1) {
+        saveToCodeSeg("\n    mov     ax, ");
+        saveToCodeSeg(handleVars(t->son->val));
+
+    }
+    else
+        computeExpression(&(t->son));
     t = t->son->brother;
-    while (t) {
+    if (t) {
         if (strcmp(t->val->id, "+") == 0) {
-            saveToCodeSeg("\n    add     ax, ");
-            saveToCodeSeg(handleVars(t->brother->son->val));
-           
+            if (t->brother->son->brother == NULL) {
+                 saveToCodeSeg("\n    add     ax, ");
+                saveToCodeSeg(handleVars(t->brother->son->val));
+            }
+            else {
+                saveToCodeSeg("\n   push ax ");
+                computeExpression(&(t->brother));
+                saveToCodeSeg("\n    pop     bx ");
+                saveToCodeSeg("\n    add     ax,bx ");
+            }
         }
-        else if (strcmp(t->val->id, "-") == 0 ) {
-            saveToCodeSeg("\n    sub     ax, ");
-            saveToCodeSeg(handleVars(t->brother->son->val));
+        else if (strcmp(t->val->id, "-") == 0) {
+            if (t->brother->son->brother == NULL) {
+                saveToCodeSeg("\n    sub     ax, ");
+                saveToCodeSeg(handleVars(t->brother->son->val));
+            }
+            else {
+                saveToCodeSeg("\n   push ax ");
+                computeExpression(&(t->brother));
+                saveToCodeSeg("\n    pop     bx ");
+                saveToCodeSeg("\n    sub     ax,bx ");
+                saveToCodeSeg("\n   neg ax ");
+            }
            
-        }
-        else if (strcmp(t->val->id, "*") == 0) {
-            saveToCodeSeg("\n    mov     bx, ");
-            saveToCodeSeg(handleVars(t->brother->son->val));
-            saveToCodeSeg("\n    mul     bx ");
           
-        }
-        else if (strcmp(t->val->id, "/") == 0) {
-            saveToCodeSeg("\n    mov     bx, ");
-            saveToCodeSeg(handleVars(t->brother->son->val));
-            saveToCodeSeg("\n    xor     dx,dx");
-            saveToCodeSeg("\n    div     bx ");
-           
-         
-        }
-        else if (strcmp(t->val->id, "%") == 0) {
-            saveToCodeSeg("\n    mov     bx, ");
-            saveToCodeSeg(handleVars(t->brother->son->val));
-            saveToCodeSeg("\n    xor     dx,dx");
-            saveToCodeSeg("\n    div     bx ");
-            saveToCodeSeg("\n    mov     ax,dx");
 
         }
+        else if (strcmp(t->val->id, "*") == 0) {
+            if (t->brother->son->brother == NULL) {
+                saveToCodeSeg("\n    mov     bx, ");
+                saveToCodeSeg(handleVars(t->brother->son->val));
+                saveToCodeSeg("\n    mul     bx ");
+            }
+            else {
+                saveToCodeSeg("\n   push ax ");
+                computeExpression(&(t->brother));
+                saveToCodeSeg("\n    pop     bx ");
+                saveToCodeSeg("\n    mul bx ");
+            }
+        }
+        else if (strcmp(t->val->id, "/") == 0) {
+            if (t->brother->son->brother == NULL) {
+                  saveToCodeSeg("\n    mov     bx, ");
+                 saveToCodeSeg(handleVars(t->brother->son->val));
+                 saveToCodeSeg("\n    xor     dx,dx");
+                 saveToCodeSeg("\n    div     bx ");
+            }
+            else {
+                saveToCodeSeg("\n   push ax ");
+                computeExpression(&(t->brother));
+                saveToCodeSeg("\n    pop     bx ");
+                saveToCodeSeg("\n    xor     dx,dx");
+                saveToCodeSeg("\n   xchg ax,bx ");
+                saveToCodeSeg("\n    div bx ");
+            }
+        }
+        else if (strcmp(t->val->id, "%") == 0) {
+            if (t->brother->son->brother == NULL) {
+                saveToCodeSeg("\n    mov     bx, ");
+                saveToCodeSeg(handleVars(t->brother->son->val));
+                saveToCodeSeg("\n    xor     dx,dx");
+                saveToCodeSeg("\n    div     bx ");
+                saveToCodeSeg("\n    mov     ax,dx");
+            }
+            else {
+                saveToCodeSeg("\n   push ax ");
+                computeExpression(&(t->brother));
+                saveToCodeSeg("\n    pop     bx ");
+                saveToCodeSeg("\n    xor     dx,dx");
+                saveToCodeSeg("\n   xchg ax,bx ");
+                saveToCodeSeg("\n    div bx ");
+                saveToCodeSeg("\n    mov     ax,dx");
+            }
+        }
         else if (strcmp(t->val->id, "==") == 0) {
-            compareSignAssembly(t,"jne ");
+            compareSignAssembly(t, "jne ");
         }
         else if (strcmp(t->val->id, ">=") == 0) {
             compareSignAssembly(t, "jl ");
@@ -118,9 +177,7 @@ void computeExpression(parseTree** start) {
         else if (strcmp(t->val->id, "!=") == 0) {
             compareSignAssembly(t, "je ");
         }
-        t = t->brother->son->brother;
     }
-
 }
 
 // save data to data seg to write it later
@@ -400,11 +457,6 @@ void conditionASM(parseTree** result,char* lastLabel) {
     }
 
 }
-
-
-void assigmentASM(parseTree* t);
-
-void whileStatementASM(parseTree* t);
 
 void startDataSeg() {
     

@@ -24,50 +24,123 @@ int operatorExists(parseTree* t) {
 	return t->son->brother != NULL;
 }
 
-
-void switchSubTrees(parseTree** t) {
-	parseTree* firstExp;
-	parseTree* cont;
-	parseTree* secondExp;
-	// the expressions we want to switch
-	firstExp = *t;
-	secondExp = (*t)->son->brother->brother;
-	
-	// the "third" expression we want to save
-	cont = secondExp->son->brother->brother->son->brother;
-	// swap
-	*t = secondExp;
-	// get the right operator in place
-	secondExp->son->brother->brother->son->brother = firstExp->son->brother;
-	// if there are other things save them
-	firstExp->son->brother->brother = firstExp;
-	secondExp->brother = firstExp->brother;
-	firstExp->brother = NULL;
-	// swap the third
-	firstExp->son->brother->brother->son->brother = cont;
-}
-
-astTree* changePrecedence(parseTree** t) {
-	parseTree* firstExp = *t;
-	parseTree* helper;
-	parseTree* cont;
-	parseTree* secondExp;
+void changePrecedence(parseTree** t) {
+	parseTree* firstExp = *t; 
 	if (firstExp) {
-		if (isExpression((*t)->val)) {
-			while (firstExp && operatorExists(firstExp) && operatorExists(firstExp->son->brother->brother) &&
-				getPrecedence(firstExp) < getPrecedence(firstExp->son->brother->brother)) {
-				switchSubTrees(t);
-				cont = (*t)->son->brother->brother;
-				firstExp = cont;
-			}
+		if (!isExpression((*t)->val) ) {
+			changePrecedence(&(firstExp->brother));
+			changePrecedence(&(firstExp->son));
+			return;
 		}
 		else {
 			changePrecedence(&(firstExp->brother));
-			changePrecedence(&(firstExp->son));
 		}
-
 	}
+	else
+		return;
+	firstExp = firstExp->son;
+	Node* postFix = createNode(firstExp->val);
+	Node* start = postFix;
+	Stack* operators = stackCreate(sizeof(TokenId));
+	Stack* subTrees = stackCreate(sizeof(parseTree));
+	parseTree* precenceTree = NULL;
+	TokenId* temp;
+	parseTree* tempTree;
+	firstExp = firstExp->brother;
+	while (firstExp) {
+		if (firstExp->val->tok == OPERATOR || firstExp->val->tok == LOGIC_OPERATORS) {
+			if (stackIsEmpty(operators) || ((TokenId*)top(operators))->precedence < firstExp->val->precedence) {
+				push(operators, firstExp->val);
+			}
+			else {
+				while (!stackIsEmpty(operators) && ((TokenId*)top(operators))->precedence >= firstExp->val->precedence) {
+					
+					postFix->next = createNode((TokenId*)pop(operators)); 
+					postFix = postFix->next;
+				}
+				push(operators, firstExp->val);
+			}
+			firstExp = firstExp->brother->son;
+		}
+		else {
+			postFix->next = createNode(firstExp->val);
+			postFix = postFix->next;
+			firstExp = firstExp->brother;
+		}
+		
+	}
+	while (!stackIsEmpty(operators)) {
 
+		postFix->next = createNode(pop(operators));
+		postFix = postFix->next;
+	}
+	while (start) {
+		if (((TokenId*)start->data)->tok == OPERATOR) {
+			precenceTree = ParseTreeSetVal((createTokenId(-1,"expression",-1)));
+			precenceTree->son = (parseTree*)pop(subTrees);
+			precenceTree->son->brother = ParseTreeSetVal(((TokenId*)start->data));
+			if (((parseTree*)top(subTrees))->val->tok != -1) {
+				precenceTree->son->brother->brother = ParseTreeSetVal((createTokenId(-1, "expression", -1)));
+				precenceTree->son->brother->brother->son = (parseTree*)pop(subTrees);
+				if (precenceTree->son->val->tok != -1) {
+					temp = precenceTree->son->brother->brother->son->val;
+					precenceTree->son->brother->brother->son->val = precenceTree->son->val;
+					precenceTree->son->val = temp;
+				}
+				else {
+					tempTree = precenceTree->son;
+					precenceTree->son = precenceTree->son->brother->brother;
+					precenceTree->son->brother = tempTree->brother;
+					tempTree->brother = NULL;
+					precenceTree->son->brother->brother = tempTree;
+					if (precenceTree->son->brother->brother->val->tok != -1) {
+						tempTree = precenceTree->son->brother->brother;
+						precenceTree->son->brother->brother = ParseTreeSetVal((createTokenId(-1, "expression", -1)));
+						precenceTree->son->brother->brother->son = tempTree;
+
+					}
+				}
+				
+			}
+			else {
+				precenceTree->son->brother->brother = (parseTree*)pop(subTrees);
+				tempTree = precenceTree->son;
+				precenceTree->son = precenceTree->son->brother->brother;
+				precenceTree->son->brother = tempTree->brother;
+				tempTree->brother = NULL;
+				precenceTree->son->brother->brother = tempTree;
+				if (precenceTree->son->brother->brother->val->tok != -1) {
+					tempTree = precenceTree->son->brother->brother;
+					precenceTree->son->brother->brother =  ParseTreeSetVal((createTokenId(-1, "expression", -1)));
+					precenceTree->son->brother->brother->son = tempTree;
+
+				}
+
+			}
+			
+
+			
+			
+			push(subTrees, precenceTree);
+			
+		}
+		else {
+			push(subTrees, ParseTreeSetVal((TokenId*)start->data));
+		}
+		printf("%s", ((TokenId*)start->data)->id);
+		start = start->next;
+	}
+	
+	if (((parseTree*)top(subTrees))->val->tok != -1) {
+		precenceTree = ParseTreeSetVal((createTokenId(-1, "expression", -1)));
+		precenceTree->son = pop(subTrees);
+	}
+	else
+		precenceTree = pop(subTrees);
+	precenceTree->brother = (*t)->brother;
+	(*t) = precenceTree;
+	printf("\n");
+	//*t = precenceTree;
 }
 
 void checkExpressionsVars(parseTree* t) {
@@ -211,20 +284,6 @@ void removeParenthesis(parseTree* t,int precedence) {
 	
 }
 
-astTree* removeUnneccesary(parseTree* t) {
-	astTree* res;
-	if (t) {
-		if (isExpression(t->val)) {
-			res = changePrecedence(t);
-		}
-		toAst(t->brother);
-		toAst(t->son);
-	}
-	else {
-		res = t;
-	} 
-}
-
 void checkParamatersType(parseTree* t) {	
 	if (t) {
 		checkExpressionsVars(t);
@@ -235,14 +294,3 @@ void checkParamatersType(parseTree* t) {
 	
 }
 
-
-astTree* toAst(parseTree* t) {
-	astTree* res;
-	if (t) {
-		if (isExpression(t->val)) {
-			res = changePrecedence(t);
-		}
-		toAst(t->brother);
-		toAst(t->son);
-	}
-}
